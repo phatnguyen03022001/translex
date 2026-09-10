@@ -2,6 +2,11 @@
 
 Translex is a lightweight, local-first macOS menu-bar utility for English ↔ Vietnamese translation and English speech.
 
+![macOS 26.4+](https://img.shields.io/badge/macOS-26.4%2B-black?logo=apple)
+![Swift 6.2+](https://img.shields.io/badge/Swift-6.2%2B-orange?logo=swift)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release v0.1.0](https://img.shields.io/badge/release-v0.1.0-blue)](https://github.com/phatnguyen03022001/translex/releases/tag/v0.1.0)
+
 ## Requirements
 
 - macOS 26.4 or later
@@ -72,3 +77,7 @@ The normal app path is local. Translex contains no analytics, telemetry, ChatGPT
 ## Known limitations
 
 Cross-app selection depends on the target application's Accessibility behavior; the clipboard fallback cannot guarantee identical semantics for every lazy/custom pasteboard provider. Translation requires Apple's supported EN/VI pair; when language data is missing, Apple may require a one-time model download confirmation. The current build is for local use and is not notarized.
+
+## License
+
+Translex is available under the MIT License. See `LICENSE`.
