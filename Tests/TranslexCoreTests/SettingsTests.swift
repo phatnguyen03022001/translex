@@ -2,7 +2,17 @@ import Foundation
 import Testing
 @testable import TranslexCore
 
-@Test func settingsPersistShortcutsAndPopupDuration() throws {
+@Test func defaultsUseCommandNumberShortcuts() throws {
+    let suite = "TranslexTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let store = SettingsStore(defaults: defaults)
+    #expect(store.translateShortcut == .init(keyCode: 18, modifiers: [.command]))
+    #expect(store.speakShortcut == .init(keyCode: 19, modifiers: [.command]))
+    #expect(store.translateShortcut != store.speakShortcut)
+}
+
+@Test func persistedCustomShortcutsOverrideDefaults() throws {
     let suite = "TranslexTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }

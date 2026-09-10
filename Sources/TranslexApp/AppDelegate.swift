@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var shortcutManager: GlobalShortcutManager?
     private var settingsWindow: SettingsWindowController?
     private var shortcutIssue: String?
+    private var activeTranslateShortcut: ShortcutDefinition?
+    private var activeSpeakShortcut: ShortcutDefinition?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -44,6 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onTranslate: { [weak controller] in controller?.translateSelection() },
             onSpeak: { [weak controller] in controller?.speakSelection() }
         )
+        activeTranslateShortcut = translate
+        activeSpeakShortcut = speak
         shortcutIssue = nil
         refreshMenu()
     }
@@ -62,8 +66,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refreshMenu() {
         guard let item = statusItem else { return }
         let menu = NSMenu()
-        menu.addItem(withTitle: "Translate Selection", action: #selector(translateSelection), keyEquivalent: "")
-        menu.addItem(withTitle: "Speak Selection", action: #selector(speakSelection), keyEquivalent: "")
+        let translateTitle = activeTranslateShortcut.map { "\(ShortcutFormatter.display($0)) — Translate Selection" }
+            ?? "Translate Selection"
+        let speakTitle = activeSpeakShortcut.map { "\(ShortcutFormatter.display($0)) — Speak Selection" }
+            ?? "Speak Selection"
+        menu.addItem(withTitle: translateTitle, action: #selector(translateSelection), keyEquivalent: "")
+        menu.addItem(withTitle: speakTitle, action: #selector(speakSelection), keyEquivalent: "")
         if let button = item.button {
             button.image = NSImage(
                 systemSymbolName: shortcutIssue == nil ? "character.bubble" : "exclamationmark.triangle",

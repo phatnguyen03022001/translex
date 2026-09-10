@@ -20,8 +20,8 @@ Normal translation does not depend on the lexicon or enrichment worker.
 
 Default shortcuts:
 
-- Translate Selection: `⌃⌥T`
-- Speak English Selection: `⌃⌥S`
+- Translate Selection: `⌘1`
+- Speak English Selection: `⌘2`
 
 Both shortcuts, the English system voice, and popup duration are configurable in Settings.
 

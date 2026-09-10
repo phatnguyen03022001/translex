@@ -64,11 +64,11 @@ public final class SettingsStore: @unchecked Sendable {
     }
 
     public var translateShortcut: ShortcutDefinition {
-        get { readShortcut(Key.translateShortcut) ?? .init(keyCode: 17, modifiers: [.control, .option]) }
+        get { readShortcut(Key.translateShortcut) ?? .init(keyCode: 18, modifiers: [.command]) }
         set { try? setTranslateShortcut(newValue) }
     }
     public var speakShortcut: ShortcutDefinition {
-        get { readShortcut(Key.speakShortcut) ?? .init(keyCode: 1, modifiers: [.control, .option]) }
+        get { readShortcut(Key.speakShortcut) ?? .init(keyCode: 19, modifiers: [.command]) }
         set { try? setSpeakShortcut(newValue) }
     }
 
