@@ -22,21 +22,35 @@ public enum ShortcutValidationError: Error, LocalizedError, Equatable {
     case missingPrimaryModifier
     case invalidKeyCode
     case duplicateActions
+    case reservedSystemShortcut
 
     public var errorDescription: String? {
         switch self {
         case .missingPrimaryModifier: "Shortcut needs Command, Option, or Control."
         case .invalidKeyCode: "Shortcut key code is invalid."
         case .duplicateActions: "Translate and Speak shortcuts must differ."
+        case .reservedSystemShortcut: "This shortcut is reserved by macOS and cannot be used by Translex."
         }
     }
 }
+public enum ShortcutReservedPolicy {
+    public static func isReserved(_ shortcut: ShortcutDefinition) -> Bool {
+        let commandSpace = ShortcutDefinition(keyCode: 49, modifiers: [.command])
+        let commandTab = ShortcutDefinition(keyCode: 48, modifiers: [.command])
+        let forceQuit = ShortcutDefinition(keyCode: 53, modifiers: [.command, .option])
+        return shortcut == commandSpace || shortcut == commandTab || shortcut == forceQuit
+    }
+}
+
 public enum ShortcutValidator {
     public static func validate(_ shortcut: ShortcutDefinition) throws {
-        guard shortcut.keyCode <= 127 else { throw ShortcutValidationError.invalidKeyCode }
+        guard ShortcutKeyCatalog.isSupported(shortcut.keyCode) else { throw ShortcutValidationError.invalidKeyCode }
         let primary: ShortcutModifiers = [.command, .option, .control]
         guard !shortcut.modifiers.intersection(primary).isEmpty else {
             throw ShortcutValidationError.missingPrimaryModifier
+        }
+        guard !ShortcutReservedPolicy.isReserved(shortcut) else {
+            throw ShortcutValidationError.reservedSystemShortcut
         }
     }
 

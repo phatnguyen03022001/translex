@@ -11,14 +11,14 @@ enum ShortcutAction: UInt32 {
 
 enum ShortcutRegistrationError: Error, LocalizedError {
     case eventHandlerInstallationFailed(OSStatus)
-    case registrationFailed(ShortcutAction, OSStatus)
+    case registrationFailed(ShortcutAction, ShortcutDefinition, OSStatus)
 
     var errorDescription: String? {
         switch self {
         case .eventHandlerInstallationFailed(let status):
             "Could not install the global shortcut handler (OSStatus \(status))."
-        case .registrationFailed(let action, let status):
-            "Could not register \(action == .translate ? "Translate" : "Speak") shortcut (OSStatus \(status)). It may conflict with another global shortcut."
+        case .registrationFailed(let action, let shortcut, let status):
+            "\(action == .translate ? "Translate" : "Speak") shortcut \(ShortcutFormatter.display(shortcut)) is unavailable or conflicting (OSStatus \(status))."
         }
     }
 }
@@ -117,7 +117,7 @@ final class GlobalShortcutManager {
             &ref
         )
         guard status == noErr, let ref else {
-            throw ShortcutRegistrationError.registrationFailed(action, status)
+            throw ShortcutRegistrationError.registrationFailed(action, definition, status)
         }
         refs[action] = ref
     }

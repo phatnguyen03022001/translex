@@ -71,14 +71,78 @@ public final class DatabaseStore: @unchecked Sendable {
         """)
         try execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_queue_active ON enrichment_queue(language, normalized_text) WHERE status IN ('pending','processing');")
         try execute("INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (1, '\(timestamp(Date()))');")
+        try execute("""
+        CREATE TABLE IF NOT EXISTS favorites (
+          id TEXT PRIMARY KEY, source_text TEXT NOT NULL, normalized_source TEXT NOT NULL,
+          source_language TEXT NOT NULL CHECK(source_language IN ('en','vi')),
+          translated_text TEXT NOT NULL, created_at TEXT NOT NULL,
+          UNIQUE(source_language, normalized_source, translated_text)
+        );
+        """)
+        try execute("INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (2, '\(timestamp(Date()))');")
     }
 
     public func validateDatabase() throws -> DatabaseValidationResult {
         try lock.withLock {
             let result = try scalarText("PRAGMA integrity_check;") ?? "unknown"
             let version = try scalarInt("SELECT COALESCE(MAX(version),0) FROM schema_migrations;")
-            return .init(isValid: result == "ok" && version >= 1,
+            return .init(isValid: result == "ok" && version >= 2,
                          message: "integrity=\(result), schema=\(version)")
+        }
+    }
+
+    public func saveFavorite(
+        sourceText: String,
+        sourceLanguage: SupportedLanguage,
+        translatedText: String,
+        now: Date = Date()
+    ) throws -> FavoriteRecord {
+        try lock.withLock {
+            let normalized = LexicalNormalizer.normalize(sourceText)
+            let translated = translatedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalized.isEmpty, !translated.isEmpty else {
+                throw DatabaseError.invalidState("Cannot favorite empty translation text.")
+            }
+            let id = UUID().uuidString
+            let stmt = try prepare("INSERT OR IGNORE INTO favorites(id,source_text,normalized_source,source_language,translated_text,created_at) VALUES(?,?,?,?,?,?);")
+            defer { sqlite3_finalize(stmt) }
+            bind(id, at: 1, to: stmt)
+            bind(sourceText, at: 2, to: stmt)
+            bind(normalized, at: 3, to: stmt)
+            bind(sourceLanguage.rawValue, at: 4, to: stmt)
+            bind(translated, at: 5, to: stmt)
+            bind(timestamp(now), at: 6, to: stmt)
+            try expectDone(stmt)
+            guard let favorite = try findFavoriteUnlocked(
+                sourceLanguage: sourceLanguage,
+                normalizedSource: normalized,
+                translatedText: translated
+            ) else {
+                throw DatabaseError.invalidState("Favorite insert did not produce a row.")
+            }
+            return favorite
+        }
+    }
+
+    public func listFavorites(limit: Int = 500) throws -> [FavoriteRecord] {
+        try lock.withLock {
+            let stmt = try prepare("SELECT id,source_text,normalized_source,source_language,translated_text,created_at FROM favorites ORDER BY created_at DESC, id DESC LIMIT ?;")
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_int(stmt, 1, Int32(max(1, min(limit, 1000))))
+            var items: [FavoriteRecord] = []
+            while sqlite3_step(stmt) == SQLITE_ROW { items.append(try decodeFavorite(stmt)) }
+            return items
+        }
+    }
+
+    @discardableResult
+    public func deleteFavorite(id: String) throws -> Bool {
+        try lock.withLock {
+            let stmt = try prepare("DELETE FROM favorites WHERE id=?;")
+            defer { sqlite3_finalize(stmt) }
+            bind(id, at: 1, to: stmt)
+            try expectDone(stmt)
+            return sqlite3_changes(db) == 1
         }
     }
 
@@ -233,6 +297,33 @@ public final class DatabaseStore: @unchecked Sendable {
         bind(ts, at: 10, to: stmt)
         bind(ts, at: 11, to: stmt)
         try expectDone(stmt)
+    }
+
+    private func findFavoriteUnlocked(
+        sourceLanguage: SupportedLanguage,
+        normalizedSource: String,
+        translatedText: String
+    ) throws -> FavoriteRecord? {
+        let stmt = try prepare("SELECT id,source_text,normalized_source,source_language,translated_text,created_at FROM favorites WHERE source_language=? AND normalized_source=? AND translated_text=? LIMIT 1;")
+        defer { sqlite3_finalize(stmt) }
+        bind(sourceLanguage.rawValue, at: 1, to: stmt)
+        bind(normalizedSource, at: 2, to: stmt)
+        bind(translatedText, at: 3, to: stmt)
+        return sqlite3_step(stmt) == SQLITE_ROW ? try decodeFavorite(stmt) : nil
+    }
+
+    private func decodeFavorite(_ stmt: OpaquePointer?) throws -> FavoriteRecord {
+        guard let language = SupportedLanguage(rawValue: columnString(stmt, 3) ?? "") else {
+            throw DatabaseError.sqlite("Invalid favorite language")
+        }
+        return .init(
+            id: columnString(stmt, 0)!,
+            sourceText: columnString(stmt, 1)!,
+            normalizedSource: columnString(stmt, 2)!,
+            sourceLanguage: language,
+            translatedText: columnString(stmt, 4)!,
+            createdAt: date(columnString(stmt, 5)!)
+        )
     }
 
     private func findActiveQueue(language: SupportedLanguage, normalized: String) throws -> QueueItem? {

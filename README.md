@@ -23,20 +23,20 @@ Default shortcuts:
 - Translate Selection: `⌘1`
 - Speak English Selection: `⌘2`
 
-Both shortcuts, the English system voice, and popup duration are configurable in Settings.
+Both shortcuts are recorded directly in Settings: click a shortcut field, press the desired Command/Option/Control/Shift combination plus a supported key, then Apply. Translex rejects a small set of clearly reserved macOS shortcuts, while Carbon registration remains the runtime authority for conflicts. App-local conflicts cannot be universally discovered. The English system voice and popup duration are also configurable.
 
 Selection uses macOS Accessibility first. If the foreground control does not expose selected text, Translex performs one temporary Copy operation, snapshots the current pasteboard, reads the copied selection, then restores the prior pasteboard contents.
 
 Translation uses Apple's native Translation framework only. If a supported EN/VI language model is not installed, the framework requests the system download on demand and continues the original translation after preparation; there is no remote-service fallback.
 
-English speech uses `AVSpeechSynthesizer` and an installed English system voice.
+English speech uses `AVSpeechSynthesizer` and an installed English system voice. Invoking Translate or Speak with no usable selection shows a small nonactivating `No text selected` toast. Successful translation popups include a `+` action that saves the source/translation pair to local Favorites; `Favorites…` in the menu bar lists and removes saved items.
 ## Local data
 
 The runtime SQLite database is stored at:
 
 `~/Library/Application Support/com.picmao.translex/translex.sqlite3`
 
-SQLite runs with WAL, foreign keys, a busy timeout, and a small migration table. Sentence translation never waits for lexical enrichment. Lexical misses are queued once per active normalized identity for later external enrichment.
+SQLite runs with WAL, foreign keys, a busy timeout, and a small migration table. Favorites are stored separately from lexical enrichment and duplicate saves are idempotent. Sentence translation never waits for lexical enrichment. Lexical misses are queued once per active normalized identity for later external enrichment.
 
 ## Agent CLI
 
@@ -71,4 +71,4 @@ The normal app path is local. Translex contains no analytics, telemetry, ChatGPT
 
 ## Known limitations
 
-Cross-app selection depends on the target application's Accessibility behavior; the clipboard fallback cannot guarantee identical semantics for every lazy/custom pasteboard provider. Translation requires Apple's supported EN/VI pair and installed language assets. The current build is for local use and is not notarized.
+Cross-app selection depends on the target application's Accessibility behavior; the clipboard fallback cannot guarantee identical semantics for every lazy/custom pasteboard provider. Translation requires Apple's supported EN/VI pair; when language data is missing, Apple may require a one-time model download confirmation. The current build is for local use and is not notarized.

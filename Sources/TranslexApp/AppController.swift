@@ -1,6 +1,21 @@
 import AppKit
 import TranslexCore
 
+enum SelectionFeedbackKind: Equatable {
+    case noSelectionToast
+    case accessibilityPermission
+    case error
+}
+
+enum SelectionFeedbackPolicy {
+    static func kind(for error: SelectionError) -> SelectionFeedbackKind {
+        switch error {
+        case .noSelection, .copyFailed: .noSelectionToast
+        case .accessibilityRequired: .accessibilityPermission
+        }
+    }
+}
+
 @MainActor
 final class AppController {
     let settings: SettingsStore
@@ -33,7 +48,15 @@ final class AppController {
                     primary: result.translatedText,
                     detail: detail,
                     anchor: selected.anchor,
-                    duration: settings.popupDuration
+                    duration: settings.popupDuration,
+                    favoriteAction: { [weak self] in
+                        guard let self else { return }
+                        _ = try self.database.saveFavorite(
+                            sourceText: result.sourceText,
+                            sourceLanguage: result.direction.source,
+                            translatedText: result.translatedText
+                        )
+                    }
                 )
             } catch {
                 showError(error, anchor: selected.anchor)
@@ -91,10 +114,17 @@ final class AppController {
     }
 
     private func showError(_ error: Error, anchor: NSPoint = NSEvent.mouseLocation) {
-        if let selectionError = error as? SelectionError,
-           case .accessibilityRequired = selectionError {
-            showAccessibilityPermissionAlert(selectionError)
-            return
+        if let selectionError = error as? SelectionError {
+            switch SelectionFeedbackPolicy.kind(for: selectionError) {
+            case .noSelectionToast:
+                popup.showToast("No text selected", anchor: anchor)
+                return
+            case .accessibilityPermission:
+                showAccessibilityPermissionAlert(selectionError)
+                return
+            case .error:
+                break
+            }
         }
         popup.show(
             source: nil,

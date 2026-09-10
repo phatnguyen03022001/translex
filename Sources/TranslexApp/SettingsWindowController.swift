@@ -8,32 +8,12 @@ final class SettingsWindowController: NSWindowController {
     private let selection: SelectionProvider
     private let onApply: (ShortcutDefinition, ShortcutDefinition) throws -> Void
 
-    private let translateModifiers = NSPopUpButton()
-    private let translateKey = NSPopUpButton()
-    private let speakModifiers = NSPopUpButton()
-    private let speakKey = NSPopUpButton()
+    private let translateRecorder: ShortcutRecorderControl
+    private let speakRecorder: ShortcutRecorderControl
     private let voice = NSPopUpButton()
     private let duration = NSSlider(value: 4, minValue: 2, maxValue: 15, target: nil, action: nil)
     private let durationLabel = NSTextField(labelWithString: "")
     private let accessibilityStatus = NSTextField(labelWithString: "")
-
-    private let modifierOptions: [(String, ShortcutModifiers)] = [
-        ("⌘", [.command]),
-        ("⌃⌥", [.control, .option]),
-        ("⌘⌥", [.command, .option]),
-        ("⌃⌘", [.control, .command]),
-        ("⌃⌥⇧", [.control, .option, .shift]),
-        ("⌘⌥⇧", [.command, .option, .shift])
-    ]
-
-    private let keyOptions: [(String, UInt32)] = [
-        ("1", 18), ("2", 19),
-        ("A", 0), ("S", 1), ("D", 2), ("F", 3), ("H", 4), ("G", 5),
-        ("Z", 6), ("X", 7), ("C", 8), ("V", 9), ("B", 11), ("Q", 12),
-        ("W", 13), ("E", 14), ("R", 15), ("Y", 16), ("T", 17), ("O", 31),
-        ("U", 32), ("I", 34), ("P", 35), ("L", 37), ("J", 38), ("K", 40),
-        ("N", 45), ("M", 46)
-    ]
 
     init(
         settings: SettingsStore,
@@ -45,8 +25,10 @@ final class SettingsWindowController: NSWindowController {
         self.speech = speech
         self.selection = selection
         self.onApply = onApply
+        self.translateRecorder = ShortcutRecorderControl(shortcut: settings.translateShortcut)
+        self.speakRecorder = ShortcutRecorderControl(shortcut: settings.speakShortcut)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 470, height: 310),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 340),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -62,8 +44,6 @@ final class SettingsWindowController: NSWindowController {
 
     private func buildUI() {
         guard let content = window?.contentView else { return }
-        let translateRow = shortcutRow(modifiers: translateModifiers, key: translateKey)
-        let speakRow = shortcutRow(modifiers: speakModifiers, key: speakKey)
         duration.target = self
         duration.action = #selector(durationChanged)
         duration.isContinuous = false
@@ -81,8 +61,8 @@ final class SettingsWindowController: NSWindowController {
         accessRow.spacing = 10
 
         let grid = NSGridView(views: [
-            [NSTextField(labelWithString: "Translate shortcut"), translateRow],
-            [NSTextField(labelWithString: "Speak shortcut"), speakRow],
+            [NSTextField(labelWithString: "Translate shortcut"), translateRecorder],
+            [NSTextField(labelWithString: "Speak shortcut"), speakRecorder],
             [NSTextField(labelWithString: "English voice"), voice],
             [NSTextField(labelWithString: "Popup duration"), durationRow],
             [NSTextField(labelWithString: "Accessibility"), accessRow]
@@ -93,34 +73,34 @@ final class SettingsWindowController: NSWindowController {
         grid.column(at: 1).xPlacement = .fill
         grid.translatesAutoresizingMaskIntoConstraints = false
 
+        let note = NSTextField(wrappingLabelWithString: "Global shortcuts may override the same shortcut in other apps while Translex is running.")
+        note.font = .systemFont(ofSize: 11)
+        note.textColor = .secondaryLabelColor
+        note.translatesAutoresizingMaskIntoConstraints = false
+
         let footer = NSStackView(views: [NSView(), applyButton])
         footer.orientation = .horizontal
         footer.translatesAutoresizingMaskIntoConstraints = false
 
         content.addSubview(grid)
+        content.addSubview(note)
         content.addSubview(footer)
         NSLayoutConstraint.activate([
             grid.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
             grid.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
             grid.topAnchor.constraint(equalTo: content.topAnchor, constant: 24),
+            note.leadingAnchor.constraint(equalTo: grid.leadingAnchor),
+            note.trailingAnchor.constraint(equalTo: grid.trailingAnchor),
+            note.topAnchor.constraint(equalTo: grid.bottomAnchor, constant: 16),
             footer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
             footer.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
             footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -20)
         ])
     }
 
-    private func shortcutRow(modifiers: NSPopUpButton, key: NSPopUpButton) -> NSView {
-        modifierOptions.forEach { modifiers.addItem(withTitle: $0.0) }
-        keyOptions.forEach { key.addItem(withTitle: $0.0) }
-        let stack = NSStackView(views: [modifiers, key])
-        stack.orientation = .horizontal
-        stack.spacing = 8
-        return stack
-    }
-
     private func loadValues() {
-        select(settings.translateShortcut, modifiers: translateModifiers, key: translateKey)
-        select(settings.speakShortcut, modifiers: speakModifiers, key: speakKey)
+        translateRecorder.shortcut = settings.translateShortcut
+        speakRecorder.shortcut = settings.speakShortcut
         duration.doubleValue = settings.popupDuration
         durationChanged()
         voice.removeAllItems()
@@ -131,28 +111,6 @@ final class SettingsWindowController: NSWindowController {
             voice.selectItem(at: index)
         }
         refreshAccessibility()
-    }
-
-    private func select(
-        _ shortcut: ShortcutDefinition,
-        modifiers: NSPopUpButton,
-        key: NSPopUpButton
-    ) {
-        if let index = modifierOptions.firstIndex(where: { $0.1 == shortcut.modifiers }) {
-            modifiers.selectItem(at: index)
-        }
-        if let index = keyOptions.firstIndex(where: { $0.1 == shortcut.keyCode }) {
-            key.selectItem(at: index)
-        }
-    }
-
-    private func definition(modifiers: NSPopUpButton, key: NSPopUpButton) -> ShortcutDefinition {
-        let modifierIndex = max(0, modifiers.indexOfSelectedItem)
-        let keyIndex = max(0, key.indexOfSelectedItem)
-        return .init(
-            keyCode: keyOptions[keyIndex].1,
-            modifiers: modifierOptions[modifierIndex].1
-        )
     }
 
     @objc private func durationChanged() {
@@ -170,13 +128,11 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc private func applySettings() {
-        let translate = definition(modifiers: translateModifiers, key: translateKey)
-        let speak = definition(modifiers: speakModifiers, key: speakKey)
+        let translate = translateRecorder.shortcut
+        let speak = speakRecorder.shortcut
         do {
             try ShortcutValidator.validatePair(translate: translate, speak: speak)
             try onApply(translate, speak)
-            try settings.setTranslateShortcut(translate)
-            try settings.setSpeakShortcut(speak)
             settings.popupDuration = duration.doubleValue
             let voices = speech.availableEnglishVoices
             let selectedIndex = voice.indexOfSelectedItem

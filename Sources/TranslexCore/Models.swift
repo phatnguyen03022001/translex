@@ -93,6 +93,28 @@ public struct LexemeRecord: Codable, Equatable, Sendable {
     public var updatedAt: Date
 }
 
+
+public struct FavoriteRecord: Codable, Equatable, Sendable {
+    public var id: String
+    public var sourceText: String
+    public var normalizedSource: String
+    public var sourceLanguage: SupportedLanguage
+    public var translatedText: String
+    public var createdAt: Date
+
+    public init(
+        id: String, sourceText: String, normalizedSource: String,
+        sourceLanguage: SupportedLanguage, translatedText: String, createdAt: Date
+    ) {
+        self.id = id
+        self.sourceText = sourceText
+        self.normalizedSource = normalizedSource
+        self.sourceLanguage = sourceLanguage
+        self.translatedText = translatedText
+        self.createdAt = createdAt
+    }
+}
+
 public enum QueueStatus: String, Codable, Sendable { case pending, processing, ready, failed }
 
 public struct QueueItem: Codable, Equatable, Sendable {

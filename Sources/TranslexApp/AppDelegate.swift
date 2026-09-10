@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: AppController?
     private var shortcutManager: GlobalShortcutManager?
     private var settingsWindow: SettingsWindowController?
+    private var favoritesWindow: FavoritesWindowController?
     private var shortcutIssue: String?
     private var activeTranslateShortcut: ShortcutDefinition?
     private var activeSpeakShortcut: ShortcutDefinition?
@@ -81,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.toolTip = shortcutIssue.map { "Translex — \($0)" } ?? "Translex"
         }
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Favorites…", action: #selector(openFavorites), keyEquivalent: "")
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Translex", action: #selector(quit), keyEquivalent: "q")
@@ -96,6 +98,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func speakSelection() {
         controller?.speakSelection()
+    }
+
+    @objc private func openFavorites() {
+        guard let controller else { return }
+        if favoritesWindow == nil {
+            favoritesWindow = FavoritesWindowController(database: controller.database)
+        }
+        favoritesWindow?.show()
     }
 
     @objc private func openSettings() {
@@ -120,20 +130,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let controller else {
             throw ShortcutRegistrationError.eventHandlerInstallationFailed(OSStatus(eventNotHandledErr))
         }
-        let previousTranslate = controller.settings.translateShortcut
-        let previousSpeak = controller.settings.speakShortcut
-        do {
-            try registerShortcuts(translate: translate, speak: speak)
-        } catch {
-            let originalError = error
-            do {
-                try registerShortcuts(translate: previousTranslate, speak: previousSpeak)
-            } catch {
-                shortcutIssue = "New shortcuts failed and previous shortcuts could not be restored: \(error.localizedDescription)"
-                refreshMenu()
+        let requested = ShortcutPair(translate: translate, speak: speak)
+        let coordinator = ShortcutApplyCoordinator(
+            current: { [weak self] in
+                ShortcutPair(
+                    translate: self?.activeTranslateShortcut ?? controller.settings.translateShortcut,
+                    speak: self?.activeSpeakShortcut ?? controller.settings.speakShortcut
+                )
+            },
+            register: { [weak self] pair in
+                guard let self else {
+                    throw ShortcutRegistrationError.eventHandlerInstallationFailed(OSStatus(eventNotHandledErr))
+                }
+                try self.registerShortcuts(translate: pair.translate, speak: pair.speak)
+            },
+            persist: { pair in
+                try controller.settings.setTranslateShortcut(pair.translate)
+                try controller.settings.setSpeakShortcut(pair.speak)
+            },
+            onRollbackFailure: { [weak self] error in
+                self?.shortcutIssue = "Previous shortcuts could not be restored: \(error.localizedDescription)"
+                self?.refreshMenu()
             }
-            throw originalError
-        }
+        )
+        try coordinator.apply(requested)
     }
 
     @objc private func quit() {
