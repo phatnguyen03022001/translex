@@ -9,46 +9,47 @@ public enum LanguageDirectionResolver {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        let words = wordTokens(in: trimmed)
-        let markedVietnamese = words.filter(containsVietnameseSpecificCharacters)
+        switch nativeLanguage {
+        case .vietnamese:
+            return direction(from: isConfidentlyPureVietnamese(trimmed) ? .vietnamese : .english)
+        case .english:
+            return direction(from: isConfidentlyPureEnglish(trimmed) ? .english : .vietnamese)
+        }
+    }
+
+    private static func isConfidentlyPureEnglish(_ text: String) -> Bool {
+        guard !containsVietnameseSpecificCharacters(text) else { return false }
         let recognizer = NLLanguageRecognizer()
-        recognizer.processString(trimmed)
-        let hypotheses = recognizer.languageHypotheses(withMaximum: 4)
-        let englishScore = hypotheses[.english] ?? 0
-        let vietnameseScore = hypotheses[.vietnamese] ?? 0
+        recognizer.processString(text)
+        let englishScore = recognizer.languageHypotheses(withMaximum: 4)[.english] ?? 0
+        return recognizer.dominantLanguage == .english && englishScore >= 0.10
+    }
 
-        if markedVietnamese.isEmpty {
-            if recognizer.dominantLanguage == .vietnamese, vietnameseScore >= 0.60 {
-                return direction(from: .vietnamese)
-            }
-            if recognizer.dominantLanguage == .english, englishScore >= 0.10 {
-                return direction(from: .english)
-            }
-            return preferredTargetDirection(nativeLanguage)
-        }
+    private static func isConfidentlyPureVietnamese(_ text: String) -> Bool {
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        let vietnameseScore = recognizer.languageHypotheses(withMaximum: 4)[.vietnamese] ?? 0
+        guard recognizer.dominantLanguage == .vietnamese, vietnameseScore >= 0.60 else { return false }
+        return !containsStrongEnglishEvidence(wordTokens(in: text))
+    }
 
-        let unmarkedWords = words.filter { !containsVietnameseSpecificCharacters($0) }
-        if unmarkedWords.count >= 2 {
-            let unmarkedRecognizer = NLLanguageRecognizer()
-            unmarkedRecognizer.processString(unmarkedWords.joined(separator: " "))
-            let englishFragmentScore = unmarkedRecognizer.languageHypotheses(withMaximum: 3)[.english] ?? 0
-            if englishFragmentScore >= 0.75 {
-                return preferredTargetDirection(nativeLanguage)
-            }
+    private static func containsStrongEnglishEvidence(_ words: [String]) -> Bool {
+        let unmarked = words.filter { !containsVietnameseSpecificCharacters($0) }
+        for word in unmarked where word.count >= 2 {
+            let recognizer = NLLanguageRecognizer()
+            recognizer.processString(word)
+            let score = recognizer.languageHypotheses(withMaximum: 4)[.english] ?? 0
+            if recognizer.dominantLanguage == .english && score >= 0.45 { return true }
         }
-
-        if recognizer.dominantLanguage == .vietnamese || vietnameseScore >= 0.65 {
-            return direction(from: .vietnamese)
-        }
-        return preferredTargetDirection(nativeLanguage)
+        guard unmarked.count >= 2 else { return false }
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(unmarked.joined(separator: " "))
+        let score = recognizer.languageHypotheses(withMaximum: 4)[.english] ?? 0
+        return recognizer.dominantLanguage == .english && score >= 0.75
     }
 
     private static func direction(from source: SupportedLanguage) -> TranslationDirection {
         .init(source: source, target: source == .english ? .vietnamese : .english)
-    }
-
-    private static func preferredTargetDirection(_ nativeLanguage: SupportedLanguage) -> TranslationDirection {
-        direction(from: nativeLanguage == .vietnamese ? .english : .vietnamese)
     }
 
     private static func wordTokens(in text: String) -> [String] {
