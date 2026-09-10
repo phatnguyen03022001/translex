@@ -57,11 +57,13 @@ CLI writes validate lexical payloads before committing. Set `TRANSLEX_DB_PATH` t
 swift build -c debug
 swift test
 swift build -c release
-Scripts/package_app.sh release
-open build/Translex.app
+Scripts/package_app.sh release --install
+open /Applications/Translex.app
 ```
 
-The packaging script builds `build/Translex.app`, generates native icon representations from the supplied canonical PNG, and applies ad-hoc local signing. Notarization and App Store distribution are intentionally out of scope.
+The canonical local workflow signs Translex with the Mac's single available Apple Development identity and safely installs it at `/Applications/Translex.app`. If multiple development identities are available, set `TRANSLEX_SIGNING_IDENTITY` explicitly. Ad-hoc signing is available only as an explicit fallback with `TRANSLEX_ALLOW_ADHOC_SIGNING=1` and is not the preferred installed-app workflow. Notarization and App Store distribution are intentionally out of scope.
+
+Grant Accessibility to the canonical `/Applications/Translex.app` when macOS prompts. Translex uses Accessibility only to read selected text and to support its bounded clipboard-copy fallback; it does not require Screen Recording or Input Monitoring for this workflow. If access is not yet granted, retry the action after granting it; relaunch Translex only if macOS still reports the permission as unavailable.
 
 ## Privacy
 

@@ -91,11 +91,32 @@ final class AppController {
     }
 
     private func showError(_ error: Error, anchor: NSPoint = NSEvent.mouseLocation) {
+        if let selectionError = error as? SelectionError,
+           case .accessibilityRequired = selectionError {
+            showAccessibilityPermissionAlert(selectionError)
+            return
+        }
         popup.show(
             source: nil,
             primary: error.localizedDescription,
             anchor: anchor,
             duration: settings.popupDuration
         )
+    }
+
+    private func showAccessibilityPermissionAlert(_ error: SelectionError) {
+        popup.dismiss()
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Accessibility Permission Required"
+        alert.informativeText = [error.errorDescription, error.recoverySuggestion]
+            .compactMap { $0 }
+            .joined(separator: "\n\n")
+        alert.addButton(withTitle: "Request Access")
+        alert.addButton(withTitle: "Not Now")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            _ = selection.requestAccessibilityPermission()
+        }
     }
 }

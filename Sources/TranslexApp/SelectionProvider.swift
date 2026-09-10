@@ -18,6 +18,15 @@ enum SelectionError: Error, LocalizedError {
         case .copyFailed: "The current app did not expose or copy its selected text."
         }
     }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .accessibilityRequired:
+            "Translex needs Accessibility only to read selected text and trigger its bounded clipboard fallback."
+        case .noSelection, .copyFailed:
+            nil
+        }
+    }
 }
 
 final class SelectionProvider {
