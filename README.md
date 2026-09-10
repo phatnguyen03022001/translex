@@ -27,7 +27,7 @@ Both shortcuts, the English system voice, and popup duration are configurable in
 
 Selection uses macOS Accessibility first. If the foreground control does not expose selected text, Translex performs one temporary Copy operation, snapshots the current pasteboard, reads the copied selection, then restores the prior pasteboard contents.
 
-Translation uses Apple's native Translation framework only. If the required language data is supported but not installed, Translex reports that condition instead of falling back to a remote service.
+Translation uses Apple's native Translation framework only. If a supported EN/VI language model is not installed, the framework requests the system download on demand and continues the original translation after preparation; there is no remote-service fallback.
 
 English speech uses `AVSpeechSynthesizer` and an installed English system voice.
 ## Local data

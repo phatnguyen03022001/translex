@@ -21,6 +21,7 @@ let package = Package(
             ]
         ),
         .executableTarget(name: "TranslexCLI", dependencies: ["TranslexCore"]),
-        .testTarget(name: "TranslexCoreTests", dependencies: ["TranslexCore"])
+        .testTarget(name: "TranslexCoreTests", dependencies: ["TranslexCore"]),
+        .testTarget(name: "TranslexAppTests", dependencies: ["TranslexApp"])
     ]
 )
