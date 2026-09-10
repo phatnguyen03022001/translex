@@ -1,0 +1,101 @@
+import AppKit
+import TranslexCore
+
+@MainActor
+final class AppController {
+    let settings: SettingsStore
+    let selection = SelectionProvider()
+    let speech = SpeechService()
+    let popup = PopupController()
+    let database: DatabaseStore
+    private let translator = AppleTranslationEngine()
+
+    init(settings: SettingsStore = SettingsStore()) throws {
+        self.settings = settings
+        self.database = try DatabaseStore()
+    }
+
+    func translateSelection() {
+        let selected: SelectedText
+        do {
+            selected = try selection.selectedText()
+        } catch {
+            showError(error)
+            return
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await translator.translate(selected.text)
+                let detail = try lexicalDetail(for: result)
+                popup.show(
+                    source: result.sourceText,
+                    primary: result.translatedText,
+                    detail: detail,
+                    anchor: selected.anchor,
+                    duration: settings.popupDuration
+                )
+            } catch {
+                showError(error, anchor: selected.anchor)
+            }
+        }
+    }
+
+    func speakSelection() {
+        let selected: SelectedText
+        do {
+            selected = try selection.selectedText()
+        } catch {
+            showError(error)
+            return
+        }
+        guard LanguageDirectionResolver.resolve(selected.text)?.source == .english else {
+            popup.show(
+                source: selected.text,
+                primary: "Select English text to speak.",
+                anchor: selected.anchor,
+                duration: settings.popupDuration
+            )
+            return
+        }
+        do {
+            try speech.speakEnglish(
+                selected.text,
+                preferredIdentifier: settings.englishVoiceIdentifier
+            )
+        } catch {
+            showError(error, anchor: selected.anchor)
+        }
+    }
+
+    private func lexicalDetail(for result: TranslationResult) throws -> String? {
+        guard LexicalClassifier.isCandidate(result.sourceText) else { return nil }
+        let normalized = LexicalNormalizer.normalize(result.sourceText)
+        if let record = try database.getLexeme(
+            language: result.direction.source,
+            normalizedLemma: normalized
+        ) {
+            var parts: [String] = []
+            if let pronunciation = record.pronunciation { parts.append(pronunciation) }
+            if let sense = record.content.senses.first {
+                let value = result.direction.source == .english ? sense.definition : sense.vietnamese
+                if !value.isEmpty { parts.append(value) }
+            }
+            return parts.isEmpty ? "Lexicon entry available" : parts.joined(separator: " · ")
+        }
+        let enqueue = try database.enqueue(
+            sourceText: result.sourceText,
+            language: result.direction.source
+        )
+        return enqueue.created ? "Added to enrichment queue" : "Enrichment already pending"
+    }
+
+    private func showError(_ error: Error, anchor: NSPoint = NSEvent.mouseLocation) {
+        popup.show(
+            source: nil,
+            primary: error.localizedDescription,
+            anchor: anchor,
+            duration: settings.popupDuration
+        )
+    }
+}
