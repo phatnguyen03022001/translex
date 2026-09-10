@@ -96,7 +96,7 @@ final class FavoritesWindowController: NSWindowController, NSTableViewDataSource
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard favorites.indices.contains(row), let tableColumn else { return nil }
         let favorite = favorites[row]
-        let text = tableColumn.identifier.rawValue == "source" ? favorite.sourceText : favorite.translatedText
+        let text = tableColumn.identifier.rawValue == "source" ? favorite.canonicalSource : favorite.translatedText
         let field = NSTextField(labelWithString: text)
         field.lineBreakMode = .byTruncatingTail
         field.toolTip = text

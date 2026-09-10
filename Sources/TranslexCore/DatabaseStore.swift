@@ -80,13 +80,16 @@ public final class DatabaseStore: @unchecked Sendable {
         );
         """)
         try execute("INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (2, '\(timestamp(Date()))');")
+        if try scalarInt("SELECT COALESCE(MAX(version),0) FROM schema_migrations;") < 3 {
+            try migrateFavoritesToVersionThree()
+        }
     }
 
     public func validateDatabase() throws -> DatabaseValidationResult {
         try lock.withLock {
             let result = try scalarText("PRAGMA integrity_check;") ?? "unknown"
             let version = try scalarInt("SELECT COALESCE(MAX(version),0) FROM schema_migrations;")
-            return .init(isValid: result == "ok" && version >= 2,
+            return .init(isValid: result == "ok" && version >= 3,
                          message: "integrity=\(result), schema=\(version)")
         }
     }
@@ -98,13 +101,21 @@ public final class DatabaseStore: @unchecked Sendable {
         now: Date = Date()
     ) throws -> FavoriteRecord {
         try lock.withLock {
-            let normalized = LexicalNormalizer.normalize(sourceText)
+            let canonical = FavoriteCanonicalizer.canonicalSource(sourceText, language: sourceLanguage)
+            let normalized = LexicalNormalizer.normalize(canonical)
             let translated = translatedText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !normalized.isEmpty, !translated.isEmpty else {
+            guard !canonical.isEmpty, !normalized.isEmpty, !translated.isEmpty else {
                 throw DatabaseError.invalidState("Cannot favorite empty translation text.")
             }
             let id = UUID().uuidString
-            let stmt = try prepare("INSERT OR IGNORE INTO favorites(id,source_text,normalized_source,source_language,translated_text,created_at) VALUES(?,?,?,?,?,?);")
+            if let existing = try findFavoriteUnlocked(
+                sourceLanguage: sourceLanguage,
+                canonicalSource: canonical,
+                translatedText: translated
+            ) {
+                return existing
+            }
+            let stmt = try prepare("INSERT OR IGNORE INTO favorites(id,source_text,normalized_source,source_language,translated_text,created_at,canonical_source) VALUES(?,?,?,?,?,?,?);")
             defer { sqlite3_finalize(stmt) }
             bind(id, at: 1, to: stmt)
             bind(sourceText, at: 2, to: stmt)
@@ -112,10 +123,11 @@ public final class DatabaseStore: @unchecked Sendable {
             bind(sourceLanguage.rawValue, at: 4, to: stmt)
             bind(translated, at: 5, to: stmt)
             bind(timestamp(now), at: 6, to: stmt)
+            bind(canonical, at: 7, to: stmt)
             try expectDone(stmt)
             guard let favorite = try findFavoriteUnlocked(
                 sourceLanguage: sourceLanguage,
-                normalizedSource: normalized,
+                canonicalSource: canonical,
                 translatedText: translated
             ) else {
                 throw DatabaseError.invalidState("Favorite insert did not produce a row.")
@@ -126,7 +138,7 @@ public final class DatabaseStore: @unchecked Sendable {
 
     public func listFavorites(limit: Int = 500) throws -> [FavoriteRecord] {
         try lock.withLock {
-            let stmt = try prepare("SELECT id,source_text,normalized_source,source_language,translated_text,created_at FROM favorites ORDER BY created_at DESC, id DESC LIMIT ?;")
+            let stmt = try prepare("SELECT id,source_text,canonical_source,normalized_source,source_language,translated_text,created_at FROM favorites ORDER BY created_at DESC, id DESC LIMIT ?;")
             defer { sqlite3_finalize(stmt) }
             sqlite3_bind_int(stmt, 1, Int32(max(1, min(limit, 1000))))
             var items: [FavoriteRecord] = []
@@ -268,6 +280,50 @@ public final class DatabaseStore: @unchecked Sendable {
         }
     }
 
+    private func migrateFavoritesToVersionThree() throws {
+        try transaction {
+            try execute("ALTER TABLE favorites ADD COLUMN canonical_source TEXT NOT NULL DEFAULT '';")
+            let select = try prepare("SELECT id,source_text,source_language,translated_text FROM favorites;")
+            var rows: [(String, String, SupportedLanguage, String)] = []
+            while sqlite3_step(select) == SQLITE_ROW {
+                guard let id = columnString(select, 0),
+                      let source = columnString(select, 1),
+                      let language = SupportedLanguage(rawValue: columnString(select, 2) ?? ""),
+                      let translated = columnString(select, 3) else {
+                    sqlite3_finalize(select)
+                    throw DatabaseError.sqlite("Invalid favorite row during schema migration")
+                }
+                rows.append((id, source, language, translated))
+            }
+            sqlite3_finalize(select)
+            for (id, source, language, translated) in rows {
+                let canonical = FavoriteCanonicalizer.canonicalSource(source, language: language)
+                let normalized = LexicalNormalizer.normalize(canonical)
+                let collision = try prepare("SELECT 1 FROM favorites WHERE id<>? AND source_language=? AND normalized_source=? AND translated_text=? LIMIT 1;")
+                bind(id, at: 1, to: collision)
+                bind(language.rawValue, at: 2, to: collision)
+                bind(normalized, at: 3, to: collision)
+                bind(translated, at: 4, to: collision)
+                let hasCollision = sqlite3_step(collision) == SQLITE_ROW
+                sqlite3_finalize(collision)
+
+                let update = try prepare(hasCollision
+                    ? "UPDATE favorites SET canonical_source=? WHERE id=?;"
+                    : "UPDATE favorites SET canonical_source=?, normalized_source=? WHERE id=?;")
+                bind(canonical, at: 1, to: update)
+                if hasCollision {
+                    bind(id, at: 2, to: update)
+                } else {
+                    bind(normalized, at: 2, to: update)
+                    bind(id, at: 3, to: update)
+                }
+                try expectDone(update)
+                sqlite3_finalize(update)
+            }
+            try execute("INSERT INTO schema_migrations(version, applied_at) VALUES (3, '\(timestamp(Date()))');")
+        }
+    }
+
     private func upsertLexemeUnlocked(_ input: LexemeInput, now: Date = Date()) throws {
         try LexicalValidator.validate(input)
         let content = String(data: try encoder.encode(input.content), encoding: .utf8)!
@@ -301,28 +357,29 @@ public final class DatabaseStore: @unchecked Sendable {
 
     private func findFavoriteUnlocked(
         sourceLanguage: SupportedLanguage,
-        normalizedSource: String,
+        canonicalSource: String,
         translatedText: String
     ) throws -> FavoriteRecord? {
-        let stmt = try prepare("SELECT id,source_text,normalized_source,source_language,translated_text,created_at FROM favorites WHERE source_language=? AND normalized_source=? AND translated_text=? LIMIT 1;")
+        let stmt = try prepare("SELECT id,source_text,canonical_source,normalized_source,source_language,translated_text,created_at FROM favorites WHERE source_language=? AND canonical_source=? AND translated_text=? ORDER BY created_at,id LIMIT 1;")
         defer { sqlite3_finalize(stmt) }
         bind(sourceLanguage.rawValue, at: 1, to: stmt)
-        bind(normalizedSource, at: 2, to: stmt)
+        bind(canonicalSource, at: 2, to: stmt)
         bind(translatedText, at: 3, to: stmt)
         return sqlite3_step(stmt) == SQLITE_ROW ? try decodeFavorite(stmt) : nil
     }
 
     private func decodeFavorite(_ stmt: OpaquePointer?) throws -> FavoriteRecord {
-        guard let language = SupportedLanguage(rawValue: columnString(stmt, 3) ?? "") else {
+        guard let language = SupportedLanguage(rawValue: columnString(stmt, 4) ?? "") else {
             throw DatabaseError.sqlite("Invalid favorite language")
         }
         return .init(
             id: columnString(stmt, 0)!,
             sourceText: columnString(stmt, 1)!,
-            normalizedSource: columnString(stmt, 2)!,
+            canonicalSource: columnString(stmt, 2)!,
+            normalizedSource: columnString(stmt, 3)!,
             sourceLanguage: language,
-            translatedText: columnString(stmt, 4)!,
-            createdAt: date(columnString(stmt, 5)!)
+            translatedText: columnString(stmt, 5)!,
+            createdAt: date(columnString(stmt, 6)!)
         )
     }
 

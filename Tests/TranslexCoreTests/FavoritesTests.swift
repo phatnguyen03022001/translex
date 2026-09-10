@@ -46,7 +46,7 @@ private func makeFavoriteStore() throws -> DatabaseStore {
     try createVersionOneDatabase(at: path)
 
     let store = try DatabaseStore(path: path)
-    #expect(try store.validateDatabase().message.contains("schema=2"))
+    #expect(try store.validateDatabase().message.contains("schema=3"))
     #expect(try store.getLexeme(language: .english, normalizedLemma: "hello")?.lemma == "hello")
     #expect(try store.listQueue().map(\.sourceText) == ["world"])
     #expect(try store.listFavorites().isEmpty)

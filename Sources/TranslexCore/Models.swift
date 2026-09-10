@@ -97,17 +97,19 @@ public struct LexemeRecord: Codable, Equatable, Sendable {
 public struct FavoriteRecord: Codable, Equatable, Sendable {
     public var id: String
     public var sourceText: String
+    public var canonicalSource: String
     public var normalizedSource: String
     public var sourceLanguage: SupportedLanguage
     public var translatedText: String
     public var createdAt: Date
 
     public init(
-        id: String, sourceText: String, normalizedSource: String,
+        id: String, sourceText: String, canonicalSource: String, normalizedSource: String,
         sourceLanguage: SupportedLanguage, translatedText: String, createdAt: Date
     ) {
         self.id = id
         self.sourceText = sourceText
+        self.canonicalSource = canonicalSource
         self.normalizedSource = normalizedSource
         self.sourceLanguage = sourceLanguage
         self.translatedText = translatedText

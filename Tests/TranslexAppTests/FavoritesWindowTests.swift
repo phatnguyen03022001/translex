@@ -55,3 +55,17 @@ private func findRemoveButton(in view: NSView?) -> NSButton? {
     }
     return nil
 }
+
+@Test @MainActor func favoritesWindowUsesCanonicalSourceAsPrimaryText() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let store = try DatabaseStore(path: dir.appendingPathComponent("favorites.sqlite3").path)
+    _ = try store.saveFavorite(sourceText: "Running", sourceLanguage: .english, translatedText: "Chạy")
+
+    let controller = FavoritesWindowController(database: store)
+    controller.show()
+    let table = try #require(findTable(in: controller.window?.contentView))
+    let sourceView = try #require(controller.tableView(table, viewFor: table.tableColumns[0], row: 0) as? NSTextField)
+    #expect(sourceView.stringValue == "run")
+    controller.close()
+}

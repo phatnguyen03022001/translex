@@ -2,21 +2,64 @@ import Foundation
 import NaturalLanguage
 
 public enum LanguageDirectionResolver {
-    public static func resolve(_ text: String) -> TranslationDirection? {
+    public static func resolve(
+        _ text: String,
+        nativeLanguage: SupportedLanguage = .vietnamese
+    ) -> TranslationDirection? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        if containsVietnameseSpecificCharacters(trimmed) {
-            return .init(source: .vietnamese, target: .english)
+
+        let words = wordTokens(in: trimmed)
+        let markedVietnamese = words.filter(containsVietnameseSpecificCharacters)
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(trimmed)
+        let hypotheses = recognizer.languageHypotheses(withMaximum: 4)
+        let englishScore = hypotheses[.english] ?? 0
+        let vietnameseScore = hypotheses[.vietnamese] ?? 0
+
+        if markedVietnamese.isEmpty {
+            if recognizer.dominantLanguage == .vietnamese, vietnameseScore >= 0.60 {
+                return direction(from: .vietnamese)
+            }
+            if recognizer.dominantLanguage == .english, englishScore >= 0.10 {
+                return direction(from: .english)
+            }
+            return preferredTargetDirection(nativeLanguage)
         }
-        if let language = NLLanguageRecognizer.dominantLanguage(for: trimmed) {
-            if language == .vietnamese { return .init(source: .vietnamese, target: .english) }
-            if language == .english { return .init(source: .english, target: .vietnamese) }
+
+        let unmarkedWords = words.filter { !containsVietnameseSpecificCharacters($0) }
+        if unmarkedWords.count >= 2 {
+            let unmarkedRecognizer = NLLanguageRecognizer()
+            unmarkedRecognizer.processString(unmarkedWords.joined(separator: " "))
+            let englishFragmentScore = unmarkedRecognizer.languageHypotheses(withMaximum: 3)[.english] ?? 0
+            if englishFragmentScore >= 0.75 {
+                return preferredTargetDirection(nativeLanguage)
+            }
         }
-        let letters = trimmed.unicodeScalars.filter { CharacterSet.letters.contains($0) }
-        if !letters.isEmpty && letters.count == trimmed.unicodeScalars.filter({ !$0.properties.isWhitespace }).count {
-            return .init(source: .english, target: .vietnamese)
+
+        if recognizer.dominantLanguage == .vietnamese || vietnameseScore >= 0.65 {
+            return direction(from: .vietnamese)
         }
-        return nil
+        return preferredTargetDirection(nativeLanguage)
+    }
+
+    private static func direction(from source: SupportedLanguage) -> TranslationDirection {
+        .init(source: source, target: source == .english ? .vietnamese : .english)
+    }
+
+    private static func preferredTargetDirection(_ nativeLanguage: SupportedLanguage) -> TranslationDirection {
+        direction(from: nativeLanguage == .vietnamese ? .english : .vietnamese)
+    }
+
+    private static func wordTokens(in text: String) -> [String] {
+        let tokenizer = NLTokenizer(unit: .word)
+        tokenizer.string = text
+        var result: [String] = []
+        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
+            result.append(String(text[range]))
+            return true
+        }
+        return result
     }
 
     private static func containsVietnameseSpecificCharacters(_ text: String) -> Bool {
@@ -30,6 +73,51 @@ public enum LexicalNormalizer {
         let normalized = text.precomposedStringWithCanonicalMapping.lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
         return normalized.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+}
+
+
+public enum FavoriteCanonicalizer {
+    public static func canonicalSource(_ text: String, language: SupportedLanguage) -> String {
+        let formatted = formattingNormalized(text)
+        guard !formatted.isEmpty else { return "" }
+
+        if language == .english {
+            let words = formatted.split(whereSeparator: { $0.isWhitespace })
+            if words.count == 1, LexicalClassifier.isCandidate(formatted) {
+                if let lemma = englishLemma(formatted) {
+                    return LexicalNormalizer.normalize(lemma)
+                }
+                return LexicalNormalizer.normalize(formatted)
+            }
+            return formatted
+        }
+
+        if LexicalClassifier.isCandidate(formatted) {
+            return formatted.lowercased().precomposedStringWithCanonicalMapping
+        }
+        return formatted
+    }
+
+    public static func normalizedIdentity(_ text: String, language: SupportedLanguage) -> String {
+        LexicalNormalizer.normalize(canonicalSource(text, language: language))
+    }
+
+    private static func formattingNormalized(_ text: String) -> String {
+        let composed = text.precomposedStringWithCanonicalMapping
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        return composed.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
+    private static func englishLemma(_ word: String) -> String? {
+        let tagger = NLTagger(tagSchemes: [.lemma])
+        tagger.string = word
+        tagger.setLanguage(.english, range: word.startIndex..<word.endIndex)
+        guard let tag = tagger.tag(at: word.startIndex, unit: .word, scheme: .lemma).0 else { return nil }
+        let lemma = tag.rawValue.precomposedStringWithCanonicalMapping
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !lemma.isEmpty, !lemma.contains(where: { $0.isWhitespace }) else { return nil }
+        return lemma
     }
 }
 

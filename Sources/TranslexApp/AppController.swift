@@ -41,7 +41,10 @@ final class AppController {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let result = try await translator.translate(selected.text)
+                let result = try await translator.translate(
+                    selected.text,
+                    nativeLanguage: settings.nativeLanguage
+                )
                 let detail = try lexicalDetail(for: result)
                 popup.show(
                     source: result.sourceText,

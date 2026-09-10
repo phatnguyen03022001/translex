@@ -10,6 +10,7 @@ final class SettingsWindowController: NSWindowController {
 
     private let translateRecorder: ShortcutRecorderControl
     private let speakRecorder: ShortcutRecorderControl
+    private let nativeLanguage = NSPopUpButton()
     private let voice = NSPopUpButton()
     private let duration = NSSlider(value: 4, minValue: 2, maxValue: 15, target: nil, action: nil)
     private let durationLabel = NSTextField(labelWithString: "")
@@ -28,7 +29,7 @@ final class SettingsWindowController: NSWindowController {
         self.translateRecorder = ShortcutRecorderControl(shortcut: settings.translateShortcut)
         self.speakRecorder = ShortcutRecorderControl(shortcut: settings.speakShortcut)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 340),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 370),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -60,7 +61,10 @@ final class SettingsWindowController: NSWindowController {
         accessRow.orientation = .horizontal
         accessRow.spacing = 10
 
+        nativeLanguage.addItems(withTitles: ["Vietnamese", "English"])
+
         let grid = NSGridView(views: [
+            [NSTextField(labelWithString: "Native language"), nativeLanguage],
             [NSTextField(labelWithString: "Translate shortcut"), translateRecorder],
             [NSTextField(labelWithString: "Speak shortcut"), speakRecorder],
             [NSTextField(labelWithString: "English voice"), voice],
@@ -99,6 +103,7 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func loadValues() {
+        nativeLanguage.selectItem(withTitle: settings.nativeLanguage == .vietnamese ? "Vietnamese" : "English")
         translateRecorder.shortcut = settings.translateShortcut
         speakRecorder.shortcut = settings.speakShortcut
         duration.doubleValue = settings.popupDuration
@@ -133,6 +138,7 @@ final class SettingsWindowController: NSWindowController {
         do {
             try ShortcutValidator.validatePair(translate: translate, speak: speak)
             try onApply(translate, speak)
+            settings.nativeLanguage = nativeLanguage.titleOfSelectedItem == "English" ? .english : .vietnamese
             settings.popupDuration = duration.doubleValue
             let voices = speech.availableEnglishVoices
             let selectedIndex = voice.indexOfSelectedItem

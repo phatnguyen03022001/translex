@@ -23,7 +23,7 @@ Default shortcuts:
 - Translate Selection: `⌘1`
 - Speak English Selection: `⌘2`
 
-Both shortcuts are recorded directly in Settings: click a shortcut field, press the desired Command/Option/Control/Shift combination plus a supported key, then Apply. Translex rejects a small set of clearly reserved macOS shortcuts, while Carbon registration remains the runtime authority for conflicts. App-local conflicts cannot be universally discovered. The English system voice and popup duration are also configurable.
+Settings includes a native-language preference (Vietnamese by default, or English) used to resolve mixed/ambiguous EN/VI selections toward the user's native target language. Both shortcuts are recorded directly in Settings: click a shortcut field, press the desired Command/Option/Control/Shift combination plus a supported key, then Apply. Translex rejects a small set of clearly reserved macOS shortcuts, while Carbon registration remains the runtime authority for conflicts. App-local conflicts cannot be universally discovered. The English system voice and popup duration are also configurable.
 
 Selection uses macOS Accessibility first. If the foreground control does not expose selected text, Translex performs one temporary Copy operation, snapshots the current pasteboard, reads the copied selection, then restores the prior pasteboard contents.
 
@@ -36,7 +36,7 @@ The runtime SQLite database is stored at:
 
 `~/Library/Application Support/com.picmao.translex/translex.sqlite3`
 
-SQLite runs with WAL, foreign keys, a busy timeout, and a small migration table. Favorites are stored separately from lexical enrichment and duplicate saves are idempotent. Sentence translation never waits for lexical enrichment. Lexical misses are queued once per active normalized identity for later external enrichment.
+SQLite runs with WAL, foreign keys, a busy timeout, and a small migration table. Favorites preserve the original selected source, a deterministic canonical source, and a normalized identity; English single-word favorites use Apple's local NaturalLanguage lemma when one is available. Favorites remain separate from lexical enrichment and duplicate saves are idempotent. Sentence translation never waits for lexical enrichment. Lexical misses are queued once per active normalized identity for later external enrichment.
 
 ## Agent CLI
 

@@ -55,8 +55,11 @@ enum TranslationAvailabilityPolicy {
 final class AppleTranslationEngine {
     private let downloadHost = TranslationDownloadSessionHost()
 
-    func translate(_ text: String) async throws -> TranslationResult {
-        guard let direction = LanguageDirectionResolver.resolve(text) else {
+    func translate(
+        _ text: String,
+        nativeLanguage: SupportedLanguage = .vietnamese
+    ) async throws -> TranslationResult {
+        guard let direction = LanguageDirectionResolver.resolve(text, nativeLanguage: nativeLanguage) else {
             throw TranslationEngineError.undeterminedLanguage
         }
         let source = Locale.Language(identifier: direction.source.rawValue)

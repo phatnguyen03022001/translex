@@ -67,6 +67,7 @@ public final class SettingsStore: @unchecked Sendable {
         static let speakShortcut = "speakShortcut"
         static let popupDuration = "popupDuration"
         static let voiceIdentifier = "englishVoiceIdentifier"
+        static let nativeLanguage = "nativeLanguage"
     }
 
     private let defaults: UserDefaults
@@ -104,6 +105,15 @@ public final class SettingsStore: @unchecked Sendable {
     public var englishVoiceIdentifier: String? {
         get { defaults.string(forKey: Key.voiceIdentifier) }
         set { defaults.set(newValue, forKey: Key.voiceIdentifier) }
+    }
+
+    public var nativeLanguage: SupportedLanguage {
+        get {
+            guard let raw = defaults.string(forKey: Key.nativeLanguage),
+                  let value = SupportedLanguage(rawValue: raw) else { return .vietnamese }
+            return value
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.nativeLanguage) }
     }
 
     private func readShortcut(_ key: String) -> ShortcutDefinition? {
